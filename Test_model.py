@@ -10,14 +10,17 @@ import matplotlib.pyplot as plt
 
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential
-from keras.layers import Dense, Flatten
+from keras.layers import Dense, Flatten, Activation
 from keras.layers import Conv2D, MaxPool2D
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, TensorBoard
 
+#imports voor mijn twee normalisatietechnieken:
+from batch_renorm import BatchRenormalization
+from batch_instance_norm import batch_instance_norm
+
 # unused for now, to be used for ROC analysis
 from sklearn.metrics import roc_curve, auc
-
 
 # the size of the images in the PCAM dataset
 IMAGE_SIZE = 96
@@ -52,25 +55,42 @@ def get_model(model_nr = 1, kernel_size=(3,3), pool_size=(4,4), first_filters=32
     # build the model
     model = Sequential()
     
-    model.add(Conv2D(first_filters, kernel_size, activation = 'relu', padding = 'same', input_shape = (IMAGE_SIZE, IMAGE_SIZE, 3)))
-    model.add(MaxPool2D(pool_size = pool_size))
+    if model_nr == 1: #No normalization
+        model.add(Conv2D(first_filters, kernel_size, activation = 'relu', padding = 'same', input_shape = (IMAGE_SIZE, IMAGE_SIZE, 3)))
+        model.add(MaxPool2D(pool_size = pool_size))
     
-    model.add(Conv2D(second_filters, kernel_size, activation = 'relu', padding = 'same'))
-    model.add(MaxPool2D(pool_size = pool_size))
+        model.add(Conv2D(second_filters, kernel_size, activation = 'relu', padding = 'same'))
+        model.add(MaxPool2D(pool_size = pool_size))
     
-    if model_nr == 1:
-        model.add(Conv2D(64, (6, 6), activation = 'relu', padding = 'valid'))   # Convolutional layer acting as fully connected layer (kernel size == input size)
-        model.add(Conv2D(1, (1, 1), activation='sigmoid', padding='valid'))     # Convolutional layer acting as fully connected output layer (kernel size == input size)
-        model.add(Flatten())                                                   # Flatten the (1,1,1) Result into (1)
-    elif model_nr == 2:
         model.add(Flatten())
         model.add(Dense(64, activation = 'relu'))
         model.add(Dense(1, activation = 'sigmoid'))
-    else:
-        print("Invalid model nr. Please try again.")
-        return
     
-     # compile the model
+    elif model_nr == 2: #Batch renormalization
+        model.add(Conv2D(first_filters, kernel_size, padding = 'same', input_shape = (IMAGE_SIZE, IMAGE_SIZE, 3)))
+        model.add(BatchRenormalization())
+        model.add(Activation("relu"))
+        model.add(MaxPool2D(pool_size = pool_size))
+        
+        model.add(Conv2D(second_filters, kernel_size, padding = 'same'))
+        model.add(BatchRenormalization())
+        model.add(Activation("relu"))
+        model.add(MaxPool2D(pool_size = pool_size))
+        
+        model.add(Flatten())
+                
+        model.add(Dense(64, init='uniform'))
+        model.add(BatchRenormalization())
+        model.add(Activation("relu"))
+        
+        model.add(Dense(1, init='uniform'))
+        model.add(BatchRenormalization())
+        model.add(Activation("sigmoid"))
+        
+#    if model_nr == 3: #Batch Instance normalization
+#       model opbouw van het enige voorbeeld is totaal anders 
+#       vb: http://easy-tensorflow.com/tf-tutorials/convolutional-neural-nets-cnns?view=category&id=91
+
     model.compile(SGD(lr=0.01, momentum=0.95), loss = 'binary_crossentropy', metrics=['accuracy'])
     
     return model
@@ -102,7 +122,7 @@ def model_training(model, train_gen, val_gen, model_name = 'my_first_cnn_model')
     history = model.fit_generator(train_gen, steps_per_epoch=train_steps,
                         validation_data=val_gen,
                         validation_steps=val_steps,
-                        epochs=3,
+                        epochs=1, #tijdelijk naar 1 omdat dit wat sneller is
                         callbacks=callbacks_list)
 
 #%% ROC Analysis
@@ -126,20 +146,32 @@ def ROC_analysis(model, test_gen):
     plt.text(0.8, 0.03, "AUC = " + str(round(roc_auc, 3)))
     
 #%%
-filepath = r'C:\Users\20164798\OneDrive - TU Eindhoven\UNI\BMT 3\Q3\OGO imaging\Data'
+filepath = r'C:\Users\20166218\Documents\TU Eindhoven\Jaar 3\Q3\Project imaging\Data'
 train_gen, val_gen = get_pcam_generators(filepath)
 
-model1 = get_model(model_nr=1)
-model_training(model1, train_gen, val_gen, 'Model_1')
-ROC_analysis(model1, val_gen)
+#model1 = get_model(model_nr=1)
+#model_training(model1, train_gen, val_gen, 'Model_1')
+#ROC_analysis(model1, val_gen)
 
 model2 = get_model(model_nr=2)
 model_training(model2, train_gen, val_gen, 'Model_2')
 ROC_analysis(model2, val_gen)
 
-model3 = get_model(model_nr=3)
-model_training(model3, train_gen, val_gen, 'Model_3')
-ROC_analysis(model3, val_gen)
+#model3 = get_model(model_nr=3)
+#model_training(model3, train_gen, val_gen, 'Model_3')
+#ROC_analysis(model3, val_gen)
+
+
+
+
+
+
+
+# tensorboard --logdir logs
+# tensorboard --logdir="C:\Users\20166218\Documents\TU Eindhoven\Jaar 3\Q3\Project imaging\Main Project\logs"
+# logs elke keer aanpassen en dus ook naar wijzen in logdir
+
+# http://localhost:6006/ 
  
 
 
